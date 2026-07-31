@@ -1,0 +1,737 @@
+{
+  "name": "Q1",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "filters": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1184,
+        -240
+      ],
+      "id": "42c9110f-97ca-4e9e-9b52-a6c42d2be829",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "sdERz82Qzo1Va7jj",
+          "name": "GmailAPI"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "1562e4c6-cc21-4635-810a-3f77e8641648",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1184,
+        -48
+      ],
+      "id": "1fac6135-dcfe-472d-bf42-5683a09d4d1c",
+      "name": "Web Trigger",
+      "webhookId": "1562e4c6-cc21-4635-810a-3f77e8641648"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -784,
+        -160
+      ],
+      "id": "3af12dd1-6171-4e2f-b345-8170baa0f259",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"source\": \"email\",\n  \"raw_text\": \"={{ $json.snippet }}\",\n  \"name\": \"={{ $json.From }}\",\n  \"company\": \"\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -992,
+        -240
+      ],
+      "id": "4a70bcdf-a98d-47ce-b28a-28912b0b8b2d",
+      "name": "Email Set"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"source\": \"{{ $json.body.source }}\",\n  \"raw_text\": \"{{ $json.body.raw_text }}\",\n  \"name\": \"{{ $json.body.name }}\",\n  \"company\": \"{{ $json.body.company }}\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -992,
+        -48
+      ],
+      "id": "4b7572b5-cf18-4e25-9c64-ea5a2d0e56a3",
+      "name": "Web Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parses the LLM's response (via OpenRouter) and validates it structurally.\n// If anything is malformed, flag for human review instead of failing the workflow.\n\nconst item = $input.item.json;\nconst enquiry = $('Merge').item.json; \nlet parsed;\nlet parseError = null;\n\ntry {\n  let rawText = item.choices[0].message.content.trim();\n\n  rawText = rawText.replace(/^```(?:json)?\\s*/i, '').replace(/```\\s*$/, '').trim();\n  parsed = JSON.parse(rawText);\n} catch (e) {\n  parseError = e.message;\n  parsed = {};\n}\n\nconst validEnquiryTypes = ['job_requisition', 'general_question', 'admin_request', 'unclear'];\nconst validUrgency = ['immediate', 'soon', 'unspecified'];\n\nconst isValid =\n  !parseError &&\n  typeof parsed.summary === 'string' &&\n  validEnquiryTypes.includes(parsed.enquiry_type) &&\n  validUrgency.includes(parsed.urgency) &&\n  typeof parsed.confidence === 'number';\n\nreturn {\n  json: {\n    ...enquiry,\n    contact_name: parsed.contact_name ?? enquiry.name ?? null,\n    contact_email: parsed.contact_email ?? null,\n    contact_phone: parsed.contact_phone ?? null,\n   company: parsed.company || enquiry.company || null,\n    role_sought: parsed.role_sought ?? null,\n    location: parsed.location ?? null,\n    salary_budget: parsed.salary_budget ?? null,\n    urgency: parsed.urgency ?? 'unspecified',\n    enquiry_type: isValid ? parsed.enquiry_type : 'unclear',\n    summary: parsed.summary ?? 'Could not parse enquiry — needs manual review.',\n    confidence: isValid ? parsed.confidence : 0,\n    llm_parse_error: parseError,\n    needs_human_review: !isValid\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        -160
+      ],
+      "id": "a77260df-f11a-4a72-a150-7be98a3f609f",
+      "name": "Validate LLM Output"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6294aee0-399c-4d01-a892-9dc5bbe2b944",
+              "leftValue": "={{ $json.enquiry_type }}",
+              "rightValue": "job_requisition",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "321c8b40-3faf-4d97-8e2c-3f38d0012e8c",
+              "leftValue": "={{ $json.confidence }}\t",
+              "rightValue": 0.6,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -144,
+        -160
+      ],
+      "id": "efeaef12-4172-4095-94f0-f0961cd2b2d6",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "appTFplNg8oaRgY5N",
+          "mode": "list",
+          "cachedResultName": "Marlow Finch Airtable App",
+          "cachedResultUrl": "https://airtable.com/appTFplNg8oaRgY5N"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblaUKEMKAlqri71c",
+          "mode": "list",
+          "cachedResultName": "Consultants",
+          "cachedResultUrl": "https://airtable.com/appTFplNg8oaRgY5N/tblaUKEMKAlqri71c"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        80,
+        -272
+      ],
+      "id": "63b5a9a1-4e98-43f6-b75e-aa69cddbaeea",
+      "name": "Search records",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "lV5kqvN58JUEAZyU",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const consultants = $input.all().map(item => item.json);\nconst enquiry = $('Validate LLM Output').item.json;\n\nconst combined = `${enquiry.role_sought || ''} ${enquiry.location || ''}`.toLowerCase();\n\nconst match = consultants.find(c =>\n  (c['Specialty Keywords'] || []).some(kw => combined.includes(kw.toLowerCase()))\n);\n\nreturn {\n  json: {\n    ...enquiry,\n    assigned_consultant: match ? match.Name : 'Unassigned — needs triage',\n    assigned_consultant_email: match ? match.Email : null,\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        -272
+      ],
+      "id": "bb73da03-9abc-4a6a-9043-67081521983e",
+      "name": "Assign Consultant"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appTFplNg8oaRgY5N",
+          "mode": "list",
+          "cachedResultName": "Marlow Finch Airtable App",
+          "cachedResultUrl": "https://airtable.com/appTFplNg8oaRgY5N"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblTaI9Bk4fT1BD4Q",
+          "mode": "list",
+          "cachedResultName": "Leads",
+          "cachedResultUrl": "https://airtable.com/appTFplNg8oaRgY5N/tblTaI9Bk4fT1BD4Q"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Confidence": "={{ $json.confidence }}",
+            "Contact Name": "={{ $json.contact_name }}",
+            "Contact Email": "={{ $json.contact_email }}",
+            "Contact Phone": "={{ $json.contact_phone }}",
+            "Company": "={{ $json.company }}",
+            "Role Sought": "={{ $json.role_sought }}",
+            "Location": "={{ $json.location }}",
+            "Salary Budget": "={{ $json.salary_budget }}",
+            "Urgency": "={{ $json.urgency }}",
+            "Assigned Consultant": "={{ $json.assigned_consultant }}",
+            "Source": "={{ $json.source }}",
+            "Summary": "={{ $json.summary }}",
+            "Raw Text": "={{ $json.raw_text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Contact Name",
+              "displayName": "Contact Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Contact Email",
+              "displayName": "Contact Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Contact Phone",
+              "displayName": "Contact Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Role Sought",
+              "displayName": "Role Sought",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Location",
+              "displayName": "Location",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Salary Budget",
+              "displayName": "Salary Budget",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Assigned Consultant",
+              "displayName": "Assigned Consultant",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Summary",
+              "displayName": "Summary",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Raw Text",
+              "displayName": "Raw Text",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Needs Review",
+              "displayName": "Needs Review",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Urgency",
+              "displayName": "Urgency",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "unspecified",
+                  "value": "unspecified"
+                },
+                {
+                  "name": "soon",
+                  "value": "soon"
+                },
+                {
+                  "name": "immediate",
+                  "value": "immediate"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        496,
+        -256
+      ],
+      "id": "0181e581-4b8a-4c78-94af-f9417e399416",
+      "name": "Create a record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "lV5kqvN58JUEAZyU",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "appTFplNg8oaRgY5N",
+          "mode": "list",
+          "cachedResultName": "Marlow Finch Airtable App",
+          "cachedResultUrl": "https://airtable.com/appTFplNg8oaRgY5N"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblJZWpfdsQem1LPR",
+          "mode": "list",
+          "cachedResultName": "Needs Review",
+          "cachedResultUrl": "https://airtable.com/appTFplNg8oaRgY5N/tblJZWpfdsQem1LPR"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Confidence": "={{ $json.confidence }}",
+            "Contact Name": "={{ $json.contact_name }}",
+            "Enquiry Type": "={{ $json.enquiry_type }}",
+            "Summary": "={{ $json.summary }}",
+            "Source": "={{ $json.source }}",
+            "Raw Text": "={{ $json.raw_text }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Contact Name",
+              "displayName": "Contact Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Enquiry Type",
+              "displayName": "Enquiry Type",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "unclear",
+                  "value": "unclear"
+                },
+                {
+                  "name": "admin_request",
+                  "value": "admin_request"
+                },
+                {
+                  "name": "general_question",
+                  "value": "general_question"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Confidence",
+              "displayName": "Confidence",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Summary",
+              "displayName": "Summary",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Raw Text",
+              "displayName": "Raw Text",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Assigned Consultant",
+              "displayName": "Assigned Consultant",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "array",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        64,
+        -48
+      ],
+      "id": "1bd58bd0-3c69-4b13-b967-30c97bae23d5",
+      "name": "Write to Needs Review",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "lV5kqvN58JUEAZyU",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "JSON",
+        "body": "={\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"max_tokens\": 500,\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an intake assistant for a UK recruitment agency. Extract structured data from a raw enquiry (email, chat/LinkedIn-style message, or web form message). Respond with ONLY valid JSON, no prose, no markdown fences, matching exactly this schema:\\n{\\n  \\\"contact_name\\\": string|null,\\n  \\\"contact_email\\\": string|null,\\n  \\\"contact_phone\\\": string|null,\\n  \\\"company\\\": string|null,\\n  \\\"role_sought\\\": string|null,\\n  \\\"location\\\": string|null,\\n  \\\"salary_budget\\\": number|null,\\n  \\\"urgency\\\": \\\"immediate\\\"|\\\"soon\\\"|\\\"unspecified\\\",\\n  \\\"enquiry_type\\\": \\\"job_requisition\\\"|\\\"general_question\\\"|\\\"admin_request\\\"|\\\"unclear\\\",\\n  \\\"summary\\\": string,\\n  \\\"confidence\\\": number\\n}\\nRules:\\n- enquiry_type is \\\"job_requisition\\\" ONLY if they are asking to hire/recruit for a role.\\n- If the message is an administrative request (e.g. asking to resend a document, asking about an invoice), use \\\"admin_request\\\" and leave role/location/salary as null.\\n- If you cannot determine what the sender wants, use \\\"unclear\\\".\\n- contact_email/contact_phone: extract from the message text if the sender provided one; null if not present.\\n- salary_budget: extract as a plain number in GBP (e.g. \\\"32k\\\" -> 32000, \\\"£38k\\\" -> 38000, \\\"~£45k plus bonus\\\" -> 45000). Strip currency symbols, \\\"k\\\" suffixes, and qualifiers like \\\"plus bonus\\\" or \\\"around\\\" - just the base number as an integer. Use null if no figure is mentioned.\\n- confidence is your own 0-1 estimate of how confident you are in this extraction given the available text.\\n- Use the submitted name/company fields as a fallback for contact_name/company if the message text doesn't mention them.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Source: {{ $json.source }}\\nSubmitted name: {{ $json.name }}\\nSubmitted company: {{ $json.company }}\\nMessage:\\n{{ $json.raw_text }}\"\n    }\n  ]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -576,
+        -160
+      ],
+      "id": "3e73a920-00a4-4127-b314-0cdf232ee5f0",
+      "name": "Extract Enquiry Data (LLM)",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "wKDPYnpqotAMq49D",
+          "name": "Bearer Auth account 4"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Web Trigger": {
+      "main": [
+        [
+          {
+            "node": "Web Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Email Set",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Extract Enquiry Data (LLM)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Set": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Web Fields": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Validate LLM Output": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Search records",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Write to Needs Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search records": {
+      "main": [
+        [
+          {
+            "node": "Assign Consultant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign Consultant": {
+      "main": [
+        [
+          {
+            "node": "Create a record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Enquiry Data (LLM)": {
+      "main": [
+        [
+          {
+            "node": "Validate LLM Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "cd6d7235-f451-4d31-8355-196727006847",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "1c7e2fe6ca5ca4f39c55832a49da7b2fa57ed3277395d3412b783e8eca50b782"
+  },
+  "id": "qgFvi39QDZx1Y9TN",
+  "tags": []
+}
