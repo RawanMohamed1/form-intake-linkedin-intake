@@ -1,6 +1,6 @@
 # Marlow & Finch — Intake Automation
 
-Structured intake workflow for Marlow & Finch (recruitment agency). Turns messy inbound
+Structured intake workflow. Turns messy inbound
 (forwarded emails, LinkedIn DMs, web form submissions) into consistent structured records
 via an n8n workflow with an LLM extraction step.
 
