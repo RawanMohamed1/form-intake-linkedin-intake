@@ -39,7 +39,7 @@ export default {
           "authorization": `Bearer ${env.OPENROUTER_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "google/gemma-4-26b-a4b-it:free",
+          model: "openai/gpt-oss-20b:free",
           max_tokens: 300,
           messages: [{ role: "system", content: systemPrompt }, ...messages],
         }),
