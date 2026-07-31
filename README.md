@@ -167,13 +167,11 @@ filtered on (e.g. `Enquiries`), and wait up to a minute.
 
 ---
 
-## A note on the live demo page — this part is extra, not a task requirement
+## A note on the live demo page
 
-The task only asked for a working workflow run against the three sample enquiries, with the JSON
-export and outputs submitted. **The live, publicly-hosted demo page (`web-form/index.html`) and
-its chat widget are additional work built on top of that**, done to make the submission something
-you can actually click through rather than just read about. Worth explaining how it was built and
-why, since it introduces two extra pieces beyond n8n itself.
+The live, publicly-hosted demo page (`web-form/index.html`) and its chat widget were built to
+make the submission something you can actually click through rather than just read about. Worth
+explaining how it was built and why, since it introduces two extra pieces beyond n8n itself.
 
 **Why a hosted page at all:** the three sample enquiries needed a real way to get *into* n8n
 that wasn't just pasted JSON. The web form is a plain static page that POSTs straight to the n8n
