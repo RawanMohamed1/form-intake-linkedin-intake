@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Log LinkedIn Enquiry</title></head>
+<body style="font-family: sans-serif; max-width: 480px; margin: 40px auto;">
+  <h2>Log a LinkedIn DM</h2>
+  <textarea id="msg" rows="6" style="width:100%" placeholder="Paste the LinkedIn message here"></textarea>
+  <br><br>
+  <button onclick="submitIt()">Submit</button>
+  <p id="status"></p>
+
+  <script>
+    async function submitIt() {
+      const raw_text = document.getElementById('msg').value;
+      const res = await fetch('http://YOUR_N8N_HOST:5678/webhook/intake', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: 'linkedin', raw_text })
+      });
+      document.getElementById('status').innerText = res.ok ? 'Submitted!' : 'Error submitting';
+    }
+  </script>
+</body>
+</html>
