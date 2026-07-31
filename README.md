@@ -172,19 +172,39 @@ filtered on (e.g. `Enquiries`), and wait up to a minute.
 See [`outputs.md`](outputs.md) for the structured record produced for each of the three task
 sample enquiries.
 
----
+### Example: from raw LLM response to the final Airtable record
 
-## What I'd improve with more time
+For the Priya/Leeds sample, this is what comes back from the LLM extraction call:
 
-- The Gmail Trigger currently reads the email `snippet` (a short preview) rather than the full
-  body — fine for short test enquiries, but a real build should decode the full plain-text body
-  for longer emails.
-- The extraction step currently runs on Groq's free tier (Llama 3.3 70B) — reliable in testing,
-  but a production build serving real clients would likely default to a paid model like Claude
-  for this step, given the cost per call is small and correctness matters more than saving
-  pennies on the one step that determines whether a real lead gets routed correctly.
-- No rate-limiting on the public chat widget endpoint — low risk for a short-lived demo, but
-  worth adding for a long-lived production deployment.
-- Consultant assignment is a keyword match against an Airtable table — good enough to be
-  editable by a non-technical founder, but a larger team would probably want a proper "workload"
-  or "on rotation" balancing rule rather than pure keyword matching.
+```json
+{
+  "contact_name": "Priya",
+  "contact_email": null,
+  "contact_phone": null,
+  "company": null,
+  "role_sought": "Warehouse Team Leads",
+  "location": "Leeds",
+  "salary_budget": 32000,
+  "urgency": "immediate",
+  "enquiry_type": "job_requisition",
+  "summary": "Requirement for 2 warehouse team leads in Leeds; budget ~32k; immediate start requested.",
+  "confidence": 1.0
+}
+```
+
+After validation and consultant assignment, this is the final record written to the `Leads`
+table in Airtable:
+
+| Field | Value |
+|---|---|
+| Contact Name | Priya |
+| Company | *(blank)* |
+| Role Sought | Warehouse Team Leads |
+| Location | Leeds |
+| Salary Budget | 32000 |
+| Urgency | immediate |
+| Assigned Consultant | James (Industrial & Logistics) |
+| Source | email |
+| Confidence | 1.0 |
+| Summary | Requirement for 2 warehouse team leads in Leeds; budget ~32k; immediate start requested. |
+| Raw Text | Spoke to Priya at the London office — we need 2 warehouse team leads in Leeds asap, budget ~32k, immediate start. |
