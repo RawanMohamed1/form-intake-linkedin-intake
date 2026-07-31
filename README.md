@@ -1,28 +1,39 @@
 # Marlow & Finch — Intake Automation
 
-Turns messy inbound enquiries (forwarded emails, LinkedIn-style DMs, web form submissions)
+Turns messy inbound enquiries (forwarded emails, chat/LinkedIn-style DMs, web form submissions)
 into consistent structured records, using an n8n workflow with an LLM extraction step in the
 middle. Built for the Relay Systems AI & Automation Specialist trial task, Question 1.
 
-Live demo page (web form + chat widget): **https://rawanmohamed1.github.io/form-intake-linkedin-intake/**
+**Live demo page:** https://rawanmohamed1.github.io/form-intake-linkedin-intake/
+**Workflow export:** [`q1-n8n-workflow/workflow.json`](q1-n8n-workflow/workflow.json)
 
 ---
 
-## The problem this solves
+## Try it in 2 minutes
 
-Marlow & Finch consultants currently read every enquiry by hand and retype it into their CRM.
-Three channels feed in, all differently shaped:
+1. Open the live demo page above.
+2. Fill in the form at the top with any enquiry (or use one of the sample enquiries below) and
+   click **Submit enquiry**.
+3. Or click the 💬 bubble in the bottom-right corner and chat instead — type naturally, the bot
+   asks a couple of follow-up questions (role, location, budget, name, contact), then logs the
+   enquiry automatically once it has enough.
+4. Either path lands the enquiry in n8n within a second or two, where it's read by an LLM, turned
+   into a structured record, and written to Airtable.
 
-- A client calls or emails a consultant, who forwards the email on
-- Someone messages the company on LinkedIn
-- Someone fills in a basic web contact form
+### The three task sample enquiries, and where to enter each one
 
-This workflow gives all three one consistent path: raw text in, structured record out, routed
-automatically where the content is clear, and flagged for a human where it isn't.
+| Sample enquiry | How to run it |
+|---|---|
+| *"Spoke to Priya at the London office — we need 2 warehouse team leads in Leeds asap, budget ~32k, immediate start."* | Send/forward yourself an email with this text (see "Testing the email channel" below) |
+| *"hey are you the finance recruitment guys? after a management accountant, hybrid Bristol, perm."* | Type it into the chat bubble on the demo page |
+| Name: **Tom R**, Company: *(blank)*, Message: *"resend the terms doc"* | Fill in the form at the top of the demo page |
+
+The third one is deliberately not a real hiring enquiry — see "What happens when something
+doesn't fit" below for what the workflow does with it.
 
 ---
 
-## Architecture
+## What happens after you submit
 
 ```
                 Gmail Trigger (real inbox, polls every 1 min)
@@ -39,64 +50,74 @@ Webhook (web form + chat widget) ──▶ Set: normalize ──▶ Merge ──
                                                                                 type + confidence
                                                                                      ┌──────┴──────┐
                                                                                      ▼             ▼
-                                                                          Assign consultant   Flag for
-                                                                          (Set, rule table)   human review
+                                                                          Look up + assign     Flag for
+                                                                          consultant (Airtable  human review
+                                                                          lookup + Code)              │
                                                                                      │             │
-                                                                                     └──────┬──────┘
-                                                                                            ▼
-                                                                         Write: Airtable + Google Sheets + mock CRM
+                                                                                     ▼             ▼
+                                                                          Write to "Leads"   Write to "Needs
+                                                                          table (Airtable)   Review" table
 ```
 
-### Channels → triggers
-
-| Channel | How it arrives | Why |
-|---|---|---|
-| Forwarded email | **Gmail Trigger** (n8n native node), polling a labelled inbox every minute | Real native integration — no bridge needed |
-| Web form | A **Webhook** node, called by the hosted form page below | Straightforward POST from a real hosted page |
-| LinkedIn DM | The same **Webhook**, called by a chat widget on the same page | See note below — there is no public API for this |
-
-**Why LinkedIn DMs aren't pulled automatically:** LinkedIn does not expose a public API for
-reading or sending direct messages, even to approved partners — that access is restricted to
-LinkedIn's own products (Recruiter, Sales Navigator). The only ways around this are unofficial
-session-automation tools that violate LinkedIn's terms of service, which isn't something to
-build for a client. Instead, the demo page includes a chat widget styled like a DM conversation:
-a visitor types naturally, an LLM (via a small Cloudflare Worker proxy) asks the same follow-up
-questions a consultant would, and once it has enough — role, location, budget, urgency, name,
-and a contact method — it submits the transcript into the same pipeline as the other channels.
-In production this would more realistically be "a consultant pastes in a DM they received,"
-which takes the same 10 seconds as forwarding an email.
+1. **A trigger fires** — Gmail (for forwarded emails) or a Webhook (for the form and chat widget).
+2. **A Set node normalizes** whatever shape that channel sent into one common shape:
+   `source`, `raw_text`, `name`, `company`.
+3. **Merge** combines both paths into a single stream, so everything downstream only has to be
+   built once.
+4. **An LLM call** (currently via OpenRouter, a free-tier model) reads `raw_text` and returns a
+   structured JSON record: contact details, role, location, salary, urgency, enquiry type, and
+   a confidence score.
+5. **A validation step (plain code)** checks that JSON is well-formed and uses only the expected
+   values. If it isn't, the record is still saved, just flagged `needs_human_review: true`.
+6. **An IF node routes** on the LLM's own output: a confident `job_requisition` goes one way,
+   everything else goes the other.
+7. **Confident leads** get looked up against a `Consultants` table in Airtable (keyword match on
+   role/location) and written to the `Leads` table with a consultant assigned.
+8. **Everything else** gets written to a `Needs Review` table instead — nothing is silently
+   dropped or forced into a fake lead.
 
 ---
 
-## Deterministic logic vs. the LLM — and why
+## Where I used the LLM, and where I used plain rules — and why
 
 | Step | Deterministic or LLM? | Why |
 |---|---|---|
 | Which channel it came from | Deterministic | It's just which trigger fired — no judgment involved |
 | Normalizing field names (`snippet` → `raw_text`, etc.) | Deterministic | Pure relabelling, not language understanding |
-| Extracting role, location, salary, urgency, contact info from free text | **LLM** | This is the one part that genuinely requires understanding messy human language — "asap" means urgent, "32k" means a salary figure, "hybrid Bristol, perm" implies a permanent hybrid role. No fixed set of rules covers every way people phrase this |
-| Validating the LLM's JSON structurally | Deterministic | LLMs occasionally return malformed JSON, wrong enum values, or miss a field — this is caught in code, not trusted blindly |
+| Extracting role, location, salary, urgency, contact info from free text | **LLM** | The one part that genuinely requires understanding messy human language — "asap" means urgent, "32k" means a salary figure, "hybrid Bristol, perm" implies a permanent hybrid role. No fixed set of rules covers every way people phrase this |
+| Validating the LLM's JSON structurally | Deterministic | LLMs occasionally return malformed JSON, wrong enum values, or miss a field — this is caught in code, never trusted blindly |
 | Deciding whether something is a real lead vs. needs a human | Deterministic (reads the LLM's own output) | An `IF` node checks `enquiry_type` and `confidence` against a threshold — auditable and editable without touching the AI prompt |
-| Assigning a consultant | Deterministic (rule table) | Sector/location → consultant name is a lookup, not a judgment call. Keeping this as an editable table (rather than baked into the AI prompt) means the founder can update it themselves |
-| Writing to Airtable / Sheets / mock CRM | Deterministic | Plain API calls, no ambiguity |
+| Assigning a consultant | Deterministic (Airtable lookup + code) | Sector/location → consultant name is a lookup, not a judgment call. Keeping it as an editable Airtable table (rather than baked into the AI prompt) means the founder can add or reassign consultants themselves, with no workflow changes |
+| Writing to Airtable | Deterministic | Plain API calls, no ambiguity |
 
-**The general principle:** the LLM is used exactly once, for the one thing only a language
-model can do here — turning unstructured text into structured meaning. Everything before and
-after that step is plain rules, because rules are cheaper, faster, 100% predictable, and easy
-for a non-technical founder to audit or edit later.
+**The general principle:** the LLM is used exactly once, for the one thing only a language model
+can do here — turning unstructured text into structured meaning. Everything before and after
+that step is plain rules, because rules are cheaper, faster, 100% predictable, and easy for a
+non-technical founder to audit or edit later.
 
 ### What happens when something doesn't fit
 
 Sample 3 (Tom R, "resend the terms doc") is deliberately not a hiring enquiry. The extraction
 step classifies `enquiry_type` as `admin_request` rather than forcing role/location/salary
-fields that don't exist. The routing step then sends it to the "needs human review" path
-instead of auto-assigning a consultant — nothing gets silently dropped, and nothing gets
-force-fit into a fake lead record.
+fields that don't exist. The routing step sends it to the "needs human review" path instead of
+auto-assigning a consultant — nothing gets silently dropped, and nothing gets force-fit into a
+fake lead record.
 
-If the LLM's response itself is malformed (bad JSON, an unrecognised enum value, a timeout),
-the validation step catches it and routes the record to human review with
-`needs_human_review: true` and the parse error attached — the raw enquiry is still saved,
-just flagged, rather than the whole run failing silently.
+If the LLM's response itself is malformed (bad JSON, an unrecognised enum value, a timeout), the
+validation step catches it and routes the record to human review with `needs_human_review: true`
+and the parse error attached — the raw enquiry is still saved, just flagged, rather than the
+whole run failing silently.
+
+### Why LinkedIn DMs aren't pulled automatically
+
+LinkedIn does not expose a public API for reading or sending direct messages, even to approved
+partners — that access is restricted to LinkedIn's own products. The only workarounds are
+unofficial session-automation tools that violate LinkedIn's terms of service, which isn't
+something to build for a client. Instead, the demo page's chat widget is styled like a DM
+conversation: a visitor types naturally, an LLM asks the same follow-up questions a consultant
+would, and once it has enough, it logs the enquiry through the same pipeline as the other
+channels. In production this would more realistically be "a consultant pastes in a DM they
+received," which takes the same 10 seconds as forwarding an email.
 
 ---
 
@@ -104,76 +125,65 @@ just flagged, rather than the whole run failing silently.
 
 ```
 ├── q1-n8n-workflow/
+│   ├── workflow.json                — the full n8n workflow export, import this to run it yourself
 │   ├── web-form/index.html          — source for the hosted intake page (form + chat widget)
-│   ├── openrouter-request-body.json — the LLM extraction prompt + schema (via OpenRouter)
-│   ├── claude-request-body.json     — same prompt, Claude API request shape (alternative)
+│   ├── openrouter-request-body.json — the LLM extraction prompt + schema
 │   └── validate-llm-output.js       — the deterministic guardrail Code node
 ├── linkedin-chat-worker/
-│   ├── src/index.js                 — Cloudflare Worker: proxies chat to an LLM, keeps the API key
-│   │                                   server-side, and forwards finished conversations to n8n
+│   ├── src/index.js                 — Cloudflare Worker: proxies the chat widget to an LLM,
+│   │                                   keeping the API key server-side, and forwards finished
+│   │                                   conversations into the n8n pipeline
 │   └── wrangler.toml
-├── docs/                            — GitHub Pages copy of the hosted intake page (same as web-form/)
+├── docs/                            — GitHub Pages copy of the hosted intake page
 └── README.md
 ```
 
-**Workflow export (`workflow.json`):** not yet included — see "Still to do" below.
+---
+
+## Setting it up yourself
+
+1. **Import the workflow**: in n8n, Workflows → Import from File → select `q1-n8n-workflow/workflow.json`.
+2. **Credentials to create**:
+   - Gmail (OAuth2) — for the email trigger
+   - An LLM provider (OpenRouter, Claude, or OpenAI — Header/Bearer Auth with an API key)
+   - Airtable Personal Access Token, scoped to a base with three tables: `Consultants`
+     (Name, Specialty Keywords, Email), `Leads` (Contact Name, Contact Email, Contact Phone,
+     Company, Role Sought, Location, Salary Budget, Urgency, Assigned Consultant, Source,
+     Confidence, Summary, Raw Text), and `Needs Review` (Contact Name, Enquiry Type, Confidence,
+     Summary, Source, Raw Text).
+3. **Point the Webhook node** at the URL n8n gives you, and update:
+   - The `WEBHOOK_URL` constant in `q1-n8n-workflow/web-form/index.html`
+   - The `N8N_WEBHOOK_URL` constant in `linkedin-chat-worker/src/index.js`
+4. **Deploy the chat widget's backend** (optional, only needed if you want the chat bubble live
+   on your own page): `cd linkedin-chat-worker && npx wrangler deploy`, then set your LLM
+   provider's key as a Worker secret: `npx wrangler secret put OPENROUTER_API_KEY`.
+
+### Testing the email channel
+
+The Gmail Trigger polls a real inbox every minute for labelled emails. To test it: send or
+forward yourself an email containing one of the sample enquiries, apply the label the trigger is
+filtered on (e.g. `Enquiries`), and wait up to a minute.
 
 ---
 
-## User guide — running/trying this yourself
+## Sample outputs
 
-### Try the live demo
-
-1. Open **https://rawanmohamed1.github.io/form-intake-linkedin-intake/**
-2. Fill in the form at the top (Name, Company, Message) and submit — this goes straight to
-   the n8n webhook.
-3. Or click the 💬 bubble in the bottom-right corner to chat instead — the bot will ask a few
-   natural follow-up questions, then log the enquiry once it has enough information (including
-   your name and a contact method).
-
-### Reproduce the three task samples
-
-| Sample | Where to enter it |
-|---|---|
-| "Spoke to Priya at the London office — we need 2 warehouse team leads in Leeds asap, budget ~32k, immediate start." | Send yourself an email with this text, labelled so the Gmail Trigger picks it up — or POST it directly to the webhook with `{"source":"email","raw_text":"..."}` |
-| "hey are you the finance recruitment guys? after a management accountant, hybrid Bristol, perm." | Type it into the chat bubble |
-| Name: Tom R / Company: blank / Message: "resend the terms doc" | Fill in the form at the top of the page |
-
-### Set it up yourself in n8n
-
-1. Import the workflow (once `workflow.json` is added — see below), or rebuild node-by-node
-   using the architecture diagram above.
-2. Create credentials for: Gmail (OAuth2), your LLM provider (OpenRouter or Anthropic — header
-   auth with an API key), and whichever of Airtable / Google Sheets / mock CRM webhook you want
-   to write to.
-3. Point the Webhook node's production URL at the `WEBHOOK_URL` constant in
-   `q1-n8n-workflow/web-form/index.html`, and at `N8N_WEBHOOK_URL` in
-   `linkedin-chat-worker/src/index.js`.
-4. If you want the chat widget live on your own page: deploy the Cloudflare Worker
-   (`cd linkedin-chat-worker && npx wrangler deploy`), set your LLM provider's API key as a
-   Worker secret (`npx wrangler secret put OPENROUTER_API_KEY`), and update `WORKER_URL` in
-   `web-form/index.html` to your Worker's URL.
+See [`q1-n8n-workflow/outputs.md`](q1-n8n-workflow/outputs.md) for the structured record produced
+for each of the three task sample enquiries.
 
 ---
-
-## Still to do
-
-- [ ] Export and commit the final `workflow.json`
-- [ ] Finish wiring: routing IF node, consultant assignment rule table, and the three write
-      nodes (Airtable, Google Sheets, mock CRM)
-- [ ] Run and capture all three sample outputs in an `outputs/` file or below in this README
-- [ ] Consultant assignment is currently a simple keyword rule table in a Set node — for a real
-      handover, this should live in an editable sheet/table the founder can update without
-      touching the workflow
 
 ## What I'd improve with more time
 
 - The Gmail Trigger currently reads the email `snippet` (a short preview) rather than the full
   body — fine for short test enquiries, but a real build should decode the full plain-text body
-  for longer emails
+  for longer emails.
 - The free-tier LLM used for extraction is noticeably less reliable at strictly following the
   JSON schema than a paid model like Claude — the validation step compensates for this, but a
   production build serving real clients would likely default to a paid model for this step and
-  reserve free models for the lower-stakes conversational chat widget
-- No rate-limiting on the public chat widget endpoint — low risk for a demo, but worth adding
-  for a long-lived production deployment
+  reserve free models for the lower-stakes conversational chat widget.
+- No rate-limiting on the public chat widget endpoint — low risk for a short-lived demo, but
+  worth adding for a long-lived production deployment.
+- Consultant assignment is a keyword match against an Airtable table — good enough to be
+  editable by a non-technical founder, but a larger team would probably want a proper "workload"
+  or "on rotation" balancing rule rather than pure keyword matching.
