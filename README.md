@@ -167,6 +167,55 @@ filtered on (e.g. `Enquiries`), and wait up to a minute.
 
 ---
 
+## A note on the live demo page — this part is extra, not a task requirement
+
+The task only asked for a working workflow run against the three sample enquiries, with the JSON
+export and outputs submitted. **The live, publicly-hosted demo page (`web-form/index.html`) and
+its chat widget are additional work built on top of that**, done to make the submission something
+you can actually click through rather than just read about. Worth explaining how it was built and
+why, since it introduces two extra pieces beyond n8n itself.
+
+**Why a hosted page at all:** the three sample enquiries needed a real way to get *into* n8n
+that wasn't just pasted JSON. The web form is a plain static page that POSTs straight to the n8n
+webhook — simple, no extra moving parts, since it's just three text fields with no logic of its
+own.
+
+**Why the chat widget needed something extra:** there's no public API for reading LinkedIn DMs
+(see above), so the chat widget stands in for that channel — but unlike the form, it needs to
+hold a back-and-forth conversation, asking follow-up questions the way a consultant would. That
+requires calling an LLM live, turn by turn, from the page. An LLM API key can never be placed
+directly in a public webpage's JavaScript — anyone viewing the page's source could read and
+misuse it. So a small Cloudflare Worker sits in between: the page talks to the Worker, the Worker
+holds the API key and talks to the LLM, and once the conversation has enough information, the
+Worker forwards the finished transcript into the same n8n webhook the form uses. This was a
+security requirement of building the chat feature at all, not scope creep for its own sake.
+
+**Why the reference materials in `n8n-workflow-support/` exist:** these are the exact prompt
+text and validation code used inside the n8n nodes, kept as plain files purely so the reasoning
+is readable without opening n8n itself. They aren't executed directly — they're already inside
+the workflow JSON; these copies are for transparency only.
+
+### If you import `Q1_Trail_Task.json` into your own n8n instance
+
+The workflow will need reconnecting before it runs, for reasons that are standard to n8n, not
+specific to this build:
+
+- **Credentials don't travel with an export.** n8n deliberately excludes credential values from
+  workflow JSON — you'll see credential *placeholders* for Gmail, Groq, and Airtable that need
+  your own accounts connected.
+- **The webhook gets a new URL.** Activating the imported workflow generates a webhook URL unique
+  to your n8n instance — it won't match the one hardcoded in `web-form/index.html` or
+  `linkedin-chat-worker/src/index.js`. Update the `WEBHOOK_URL` / `N8N_WEBHOOK_URL` constants in
+  those two files to point at your new URL if you want the demo page to talk to your instance.
+- **Airtable base/table IDs are specific to this submission's base.** Recreate the three tables
+  (`Consultants`, `Leads`, `Needs Review` — column names listed above) in your own base, or point
+  the Airtable nodes at an existing base of your own with matching field names.
+
+None of this is required to evaluate the workflow's logic — the JSON, README, and `outputs.md`
+together show the full structure and real results without needing to run it again.
+
+---
+
 ## Sample outputs
 
 See [`outputs.md`](outputs.md) for the structured record produced for each of the three task
