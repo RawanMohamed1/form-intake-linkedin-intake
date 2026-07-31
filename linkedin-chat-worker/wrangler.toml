@@ -1,0 +1,6 @@
+name = "marlow-finch-chat-proxy"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+[observability]
+enabled = true
