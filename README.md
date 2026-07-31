@@ -4,7 +4,7 @@ Turns messy inbound enquiries (forwarded emails, chat/LinkedIn-style DMs, web fo
 into consistent structured records, using an n8n workflow with an LLM extraction step in the
 middle. Built for the Relay Systems AI & Automation Specialist trial task, Question 1.
 
-**Live demo page:** https://rawanmohamed1.github.io/task-trail/
+**Live demo page:** https://rawanmohamed1.github.io/task-trail-Q1/
 **Workflow export:** [`Q1_Trail_Task.json`](Q1_Trail_Task.json)
 
 ---
