@@ -5,7 +5,7 @@ into consistent structured records, using an n8n workflow with an LLM extraction
 middle. Built for the Relay Systems AI & Automation Specialist trial task, Question 1.
 
 **Live demo page:** https://rawanmohamed1.github.io/form-intake-linkedin-intake/
-**Workflow export:** [`q1-n8n-workflow/workflow.json`](q1-n8n-workflow/workflow.json)
+**Workflow export:** [`Q1_Trail_Task.json`](Q1_Trail_Task.json)
 
 ---
 
@@ -124,16 +124,16 @@ received," which takes the same 10 seconds as forwarding an email.
 ## Repo contents
 
 ```
-├── q1-n8n-workflow/
-│   ├── workflow.json                — the full n8n workflow export, import this to run it yourself
-│   ├── web-form/index.html          — source for the hosted intake page (form + chat widget)
-│   ├── openrouter-request-body.json — the LLM extraction prompt + schema
-│   └── validate-llm-output.js       — the deterministic guardrail Code node
+├── Q1_Trail_Task.json               — the n8n workflow export, import this to run it yourself
+├── web-form/index.html              — source for the hosted intake page (form + chat widget)
 ├── linkedin-chat-worker/
 │   ├── src/index.js                 — Cloudflare Worker: proxies the chat widget to an LLM,
 │   │                                   keeping the API key server-side, and forwards finished
 │   │                                   conversations into the n8n pipeline
 │   └── wrangler.toml
+├── n8n-workflow-support/            — reference materials (LLM prompt bodies, validation code,
+│                                       Airtable table templates) — not required to run the
+│                                       workflow, included for transparency
 ├── docs/                            — GitHub Pages copy of the hosted intake page
 └── README.md
 ```
@@ -142,21 +142,22 @@ received," which takes the same 10 seconds as forwarding an email.
 
 ## Setting it up yourself
 
-1. **Import the workflow**: in n8n, Workflows → Import from File → select `q1-n8n-workflow/workflow.json`.
+1. **Import the workflow**: in n8n, Workflows → Import from File → select `Q1_Trail_Task.json`.
 2. **Credentials to create**:
    - Gmail (OAuth2) — for the email trigger
-   - An LLM provider (OpenRouter, Claude, or OpenAI — Header/Bearer Auth with an API key)
+   - Groq (Bearer/Header Auth with an API key — free tier, no card required) — for the LLM
+     extraction step
    - Airtable Personal Access Token, scoped to a base with three tables: `Consultants`
      (Name, Specialty Keywords, Email), `Leads` (Contact Name, Contact Email, Contact Phone,
      Company, Role Sought, Location, Salary Budget, Urgency, Assigned Consultant, Source,
      Confidence, Summary, Raw Text), and `Needs Review` (Contact Name, Enquiry Type, Confidence,
      Summary, Source, Raw Text).
 3. **Point the Webhook node** at the URL n8n gives you, and update:
-   - The `WEBHOOK_URL` constant in `q1-n8n-workflow/web-form/index.html`
+   - The `WEBHOOK_URL` constant in `web-form/index.html`
    - The `N8N_WEBHOOK_URL` constant in `linkedin-chat-worker/src/index.js`
 4. **Deploy the chat widget's backend** (optional, only needed if you want the chat bubble live
    on your own page): `cd linkedin-chat-worker && npx wrangler deploy`, then set your LLM
-   provider's key as a Worker secret: `npx wrangler secret put OPENROUTER_API_KEY`.
+   provider's key as a Worker secret: `npx wrangler secret put GROQ_API_KEY`.
 
 ### Testing the email channel
 
@@ -168,8 +169,8 @@ filtered on (e.g. `Enquiries`), and wait up to a minute.
 
 ## Sample outputs
 
-See [`q1-n8n-workflow/outputs.md`](q1-n8n-workflow/outputs.md) for the structured record produced
-for each of the three task sample enquiries.
+See [`outputs.md`](outputs.md) for the structured record produced for each of the three task
+sample enquiries.
 
 ---
 
@@ -178,10 +179,10 @@ for each of the three task sample enquiries.
 - The Gmail Trigger currently reads the email `snippet` (a short preview) rather than the full
   body — fine for short test enquiries, but a real build should decode the full plain-text body
   for longer emails.
-- The free-tier LLM used for extraction is noticeably less reliable at strictly following the
-  JSON schema than a paid model like Claude — the validation step compensates for this, but a
-  production build serving real clients would likely default to a paid model for this step and
-  reserve free models for the lower-stakes conversational chat widget.
+- The extraction step currently runs on Groq's free tier (Llama 3.3 70B) — reliable in testing,
+  but a production build serving real clients would likely default to a paid model like Claude
+  for this step, given the cost per call is small and correctness matters more than saving
+  pennies on the one step that determines whether a real lead gets routed correctly.
 - No rate-limiting on the public chat widget endpoint — low risk for a short-lived demo, but
   worth adding for a long-lived production deployment.
 - Consultant assignment is a keyword match against an Airtable table — good enough to be
