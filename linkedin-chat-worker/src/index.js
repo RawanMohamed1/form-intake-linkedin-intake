@@ -30,22 +30,21 @@ export default {
         "Do not close the conversation until you have at least a name and one contact method, even if that takes a couple of extra questions. " +
         "Once you have enough to log the enquiry, thank them, confirm a consultant will follow up, and end your final message with the exact tag [ENQUIRY_COMPLETE] on its own at the very end (this tag will be stripped before the visitor sees it, so phrase the rest of the message as a normal, complete closing line).";
 
-      // Free-tier model via OpenRouter — keeps this endpoint cost-free even if the
-      // public URL is ever hit outside the demo, since it carries no paid Claude usage.
-      const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      // Free-tier via Groq — separate account/quota from OpenRouter, no cost per request.
+      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "authorization": `Bearer ${env.OPENROUTER_API_KEY}`,
+          "authorization": `Bearer ${env.GROQ_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "openai/gpt-oss-20b:free",
+          model: "llama-3.3-70b-versatile",
           max_tokens: 300,
           messages: [{ role: "system", content: systemPrompt }, ...messages],
         }),
       });
 
-      const data = await orRes.json();
+      const data = await groqRes.json();
       const rawReply = data?.choices?.[0]?.message?.content ?? "Sorry, something went wrong — a consultant will follow up by email.";
 
       const complete = rawReply.includes("[ENQUIRY_COMPLETE]");
