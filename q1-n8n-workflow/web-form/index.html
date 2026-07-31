@@ -298,7 +298,11 @@
         history.push({ role: 'assistant', content: data.reply });
         turns++;
 
-        if (turns >= MAX_TURNS) {
+        // Submit once the model signals it has what it needs, or as a
+        // fallback safety net if it never does within MAX_TURNS.
+        if (data.complete || turns >= MAX_TURNS) {
+          msgInput.disabled = true;
+          sendBtn.disabled = true;
           await submitConversation();
         }
       } catch (err) {

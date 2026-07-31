@@ -25,8 +25,10 @@ export default {
 
       const systemPrompt =
         "You are a friendly intake assistant for Marlow & Finch, a UK recruitment agency, chatting with a website visitor. " +
-        "Ask short, natural follow-up questions to understand what role/hire they need, location, budget, and urgency — one question at a time, max 4 exchanges. " +
-        "Once you have enough to log an enquiry, say a brief closing line thanking them and confirming a consultant will follow up.";
+        "Ask short, natural follow-up questions, one at a time, to understand: what role/hire they need, location, budget, urgency, " +
+        "and — before you finish — their NAME and an email address or phone number so a consultant can reach them. " +
+        "Do not close the conversation until you have at least a name and one contact method, even if that takes a couple of extra questions. " +
+        "Once you have enough to log the enquiry, thank them, confirm a consultant will follow up, and end your final message with the exact tag [ENQUIRY_COMPLETE] on its own at the very end (this tag will be stripped before the visitor sees it, so phrase the rest of the message as a normal, complete closing line).";
 
       // Free-tier model via OpenRouter — keeps this endpoint cost-free even if the
       // public URL is ever hit outside the demo, since it carries no paid Claude usage.
@@ -44,9 +46,12 @@ export default {
       });
 
       const data = await orRes.json();
-      const reply = data?.choices?.[0]?.message?.content ?? "Sorry, something went wrong — a consultant will follow up by email.";
+      const rawReply = data?.choices?.[0]?.message?.content ?? "Sorry, something went wrong — a consultant will follow up by email.";
 
-      return new Response(JSON.stringify({ reply }), {
+      const complete = rawReply.includes("[ENQUIRY_COMPLETE]");
+      const reply = rawReply.replace("[ENQUIRY_COMPLETE]", "").trim();
+
+      return new Response(JSON.stringify({ reply, complete }), {
         headers: { "content-type": "application/json", ...corsHeaders() },
       });
     }

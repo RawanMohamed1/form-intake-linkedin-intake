@@ -29,6 +29,8 @@ return {
   json: {
     ...enquiry,
     contact_name: parsed.contact_name ?? enquiry.submitted_name ?? null,
+    contact_email: parsed.contact_email ?? null,
+    contact_phone: parsed.contact_phone ?? null,
     company: parsed.company ?? enquiry.submitted_company ?? null,
     role_sought: parsed.role_sought ?? null,
     location: parsed.location ?? null,
