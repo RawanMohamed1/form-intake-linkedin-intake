@@ -23,26 +23,28 @@ export default {
     if (url.pathname === "/chat" && request.method === "POST") {
       const { messages } = await request.json();
 
-      const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+      const systemPrompt =
+        "You are a friendly intake assistant for Marlow & Finch, a UK recruitment agency, chatting with someone on a LinkedIn-style DM widget. " +
+        "Ask short, natural follow-up questions to understand what role/hire they need, location, budget, and urgency — one question at a time, max 4 exchanges. " +
+        "Once you have enough to log an enquiry, say a brief closing line thanking them and confirming a consultant will follow up.";
+
+      // Free-tier model via OpenRouter — keeps this endpoint cost-free even if the
+      // public URL is ever hit outside the demo, since it carries no paid Claude usage.
+      const orRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-api-key": env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
+          "authorization": `Bearer ${env.OPENROUTER_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-5",
+          model: "google/gemma-4-26b-a4b-it:free",
           max_tokens: 300,
-          system:
-            "You are a friendly intake assistant for Marlow & Finch, a UK recruitment agency, chatting with someone on a LinkedIn-style DM widget. " +
-            "Ask short, natural follow-up questions to understand what role/hire they need, location, budget, and urgency — one question at a time, max 4 exchanges. " +
-            "Once you have enough to log an enquiry, say a brief closing line thanking them and confirming a consultant will follow up.",
-          messages,
+          messages: [{ role: "system", content: systemPrompt }, ...messages],
         }),
       });
 
-      const data = await claudeRes.json();
-      const reply = data?.content?.[0]?.text ?? "Sorry, something went wrong — a consultant will follow up by email.";
+      const data = await orRes.json();
+      const reply = data?.choices?.[0]?.message?.content ?? "Sorry, something went wrong — a consultant will follow up by email.";
 
       return new Response(JSON.stringify({ reply }), {
         headers: { "content-type": "application/json", ...corsHeaders() },
